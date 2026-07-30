@@ -1,0 +1,31 @@
+# AssistVision Backend — Python Dependencies
+# Install with: pip install -r app/requirements.txt
+
+# ── Core Framework ───────────────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+pydantic==2.7.1
+pydantic-settings==2.2.1
+
+# ── HTTP Client ──────────────────────────────────────────────────────────────
+httpx==0.27.0
+
+# ── Image Processing ─────────────────────────────────────────────────────────
+Pillow==10.3.0
+
+# ── OCR (Tesseract wrapper) ──────────────────────────────────────────────────
+pytesseract==0.3.10
+# NOTE: Requires Tesseract binary installed separately:
+#   Windows: https://github.com/UB-Mannheim/tesseract/wiki
+#   Ubuntu:  sudo apt install tesseract-ocr
+#   macOS:   brew install tesseract
+
+# ── Object Detection (Optional — YOLOv8) ─────────────────────────────────────
+# Uncomment below and set USE_MOCK_DETECTION=false in config to enable:
+# ultralytics==8.2.0
+# torch>=2.0.0
+# torchvision>=0.15.0
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+python-multipart==0.0.9
+python-dotenv==1.0.1
