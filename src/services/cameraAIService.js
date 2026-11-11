@@ -19,6 +19,8 @@ class CameraAIService {
     this.analysisCanvas = document.createElement('canvas');
     this.analysisCtx = this.analysisCanvas.getContext('2d', { willReadFrequently: true });
     this.useDemoMode = false;
+    this.cameraRequestId = 0;
+    this.videoElement = null;
 
     // ── Temporal Persistence State ─────────────────────────────────────────────
     this.candidateHistory = new Map(); // key: cellIndex, value: frameHitCount
@@ -28,29 +30,73 @@ class CameraAIService {
   // ─── Camera Control ─────────────────────────────────────────────────────────
   async startCamera(videoElement, facingMode = 'environment') {
     this.currentFacingMode = facingMode;
-    if (this.stream) this.stopCamera();
+    this.stopCamera();
+    const requestId = this.cameraRequestId;
+    let stream = null;
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const error = !window.isSecureContext
+        ? 'Camera access requires HTTPS or localhost.'
+        : 'This browser does not support camera access.';
+      return { success: false, error };
+    }
+
     try {
       const constraints = {
         video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
       };
-      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (requestId !== this.cameraRequestId) {
+        stream.getTracks().forEach(track => track.stop());
+        return { success: false, error: 'Camera request was cancelled.' };
+      }
+
+      this.stream = stream;
       if (videoElement) {
-        videoElement.srcObject = this.stream;
+        this.videoElement = videoElement;
+        videoElement.autoplay = true;
+        videoElement.playsInline = true;
+        videoElement.muted = true;
+        videoElement.srcObject = stream;
         await videoElement.play();
       }
+
+      if (requestId !== this.cameraRequestId) {
+        stream.getTracks().forEach(track => track.stop());
+        if (videoElement?.srcObject === stream) videoElement.srcObject = null;
+        return { success: false, error: 'Camera request was cancelled.' };
+      }
+
       return { success: true, facingMode };
     } catch (err) {
-      console.warn('[Camera] Access error:', err.message);
-      return { success: false, error: err.message };
+      if (requestId === this.cameraRequestId) {
+        this.stopCamera();
+      } else if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+
+      const errors = {
+        NotAllowedError: 'Camera permission was denied. Allow camera access in your browser settings, then retry.',
+        NotFoundError: 'No camera was found on this device.',
+        NotReadableError: 'The camera is already in use or unavailable. Close other apps using it and retry.',
+        OverconstrainedError: 'The selected camera is unavailable. Try flipping the camera.'
+      };
+      const error = errors[err.name] || err.message || 'Unable to start the camera.';
+      console.warn('[Camera] Access error:', error);
+      return { success: false, error };
     }
   }
 
   stopCamera() {
-    if (this.stream) {
-      this.stream.getTracks().forEach(t => t.stop());
-      this.stream = null;
-    }
+    this.cameraRequestId++;
+    const videoElement = this.videoElement;
+    const stream = this.stream;
+    this.videoElement = null;
+    this.stream = null;
+
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    if (videoElement?.srcObject === stream) videoElement.srcObject = null;
   }
 
   isCameraRunning() { return !!this.stream; }

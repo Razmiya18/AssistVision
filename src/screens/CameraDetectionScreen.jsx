@@ -17,6 +17,8 @@ export const CameraDetectionScreen = () => {
   const [detections, setDetections] = useState([]);
   const [hasWarning, setHasWarning] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [cameraRetry, setCameraRetry] = useState(0);
   const [fps, setFps] = useState(0);
   const fpsCountRef = useRef(0);
   const fpsTimerRef = useRef(Date.now());
@@ -29,11 +31,16 @@ export const CameraDetectionScreen = () => {
   }, []);
 
   useEffect(() => {
-    // Start camera only if camera is allowed (isCameraOpen flag)
+    let disposed = false;
+    setCameraActive(false);
+    setCameraError('');
+
     const initCam = async () => {
       if (videoRef.current) {
         const r = await cameraAIService.startCamera(videoRef.current, facingMode);
+        if (disposed) return;
         setCameraActive(r.success);
+        setCameraError(r.success ? '' : r.error);
         if (r.success) setTimeout(syncCanvas, 400);
       }
     };
@@ -83,11 +90,12 @@ export const CameraDetectionScreen = () => {
     runLoop();
 
     return () => {
+      disposed = true;
       clearTimeout(loopRef.current);
       cameraAIService.stopCamera();
       if (obs) obs.disconnect();
     };
-  }, [cameraMode, facingMode, syncCanvas]);
+  }, [cameraMode, facingMode, syncCanvas, cameraRetry]);
 
   const modeTabs = [
     { id: CAMERA_MODES.OBJECT, label: 'Objects', icon: Box, color: '#10B981' },
@@ -143,12 +151,34 @@ export const CameraDetectionScreen = () => {
           <div className="scanner-line" />
           <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', width: '100%', height: '100%' }} />
+          {!cameraActive && (
+            <div role="status" style={{
+              position: 'absolute', inset: 0, zIndex: 5, display: 'flex', flexDirection: 'column',
+              justifyContent: 'center', alignItems: 'center', gap: '10px', padding: '24px',
+              background: 'rgba(0,0,0,0.82)', color: '#FFF', textAlign: 'center'
+            }}>
+              <AlertTriangle size={32} color="#F59E0B" />
+              <strong>{cameraError || 'Starting camera...'}</strong>
+              {cameraError && (
+                <button
+                  type="button"
+                  onClick={() => { setCameraError(''); setCameraRetry(retry => retry + 1); }}
+                  style={{
+                    background: '#2563EB', color: '#FFF', border: 0, borderRadius: '10px',
+                    padding: '9px 16px', fontWeight: '700', cursor: 'pointer'
+                  }}
+                >
+                  Retry camera
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Overlaid Status */}
           <div style={{ position: 'absolute', top: '10px', left: '10px', right: '10px', display: 'flex', justifyContent: 'space-between', zIndex: 10 }}>
-            <div className={`badge ${hasWarning ? 'badge-danger' : 'badge-accent'}`}>
-              {hasWarning ? <AlertTriangle size={12} /> : <Eye size={12} />}
-              {hasWarning ? 'WARNING' : 'LIVE'}
+            <div className={`badge ${hasWarning ? 'badge-danger' : cameraActive ? 'badge-accent' : 'badge-danger'}`}>
+              {hasWarning || !cameraActive ? <AlertTriangle size={12} /> : <Eye size={12} />}
+              {hasWarning ? 'WARNING' : cameraActive ? 'LIVE' : 'CAMERA OFF'}
             </div>
             <div style={{ background: 'rgba(7,10,20,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '4px 8px', fontSize: '12px', fontWeight: '700', color: fps > 0 ? '#10B981' : '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Gauge size={11} /> {fps} FPS
@@ -163,10 +193,16 @@ export const CameraDetectionScreen = () => {
           </h3>
 
           {detections.length === 0 ? (
-            <div className="glass-card" style={{ padding: '28px', textAlign: 'center', borderLeft: '4px solid #10B981' }}>
-              <CheckCircle2 size={44} color="#10B981" style={{ margin: '0 auto 10px' }} />
-              <h4 style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF' }}>Path Clear</h4>
-              <p style={{ fontSize: '14px', color: '#475569', marginTop: '4px' }}>No obstacles detected.</p>
+            <div className="glass-card" style={{ padding: '28px', textAlign: 'center', borderLeft: `4px solid ${cameraActive ? '#10B981' : '#F59E0B'}` }}>
+              {cameraActive
+                ? <CheckCircle2 size={44} color="#10B981" style={{ margin: '0 auto 10px' }} />
+                : <AlertTriangle size={44} color="#F59E0B" style={{ margin: '0 auto 10px' }} />}
+              <h4 style={{ fontSize: '18px', fontWeight: '800', color: '#FFFFFF' }}>
+                {cameraActive ? 'Path Clear' : cameraError ? 'Camera Unavailable' : 'Starting Camera...'}
+              </h4>
+              <p style={{ fontSize: '14px', color: '#475569', marginTop: '4px' }}>
+                {cameraActive ? 'No obstacles detected.' : cameraError || 'Waiting for camera to start.'}
+              </p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
